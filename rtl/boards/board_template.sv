@@ -3,7 +3,7 @@
 //  Copyright (C) 2026 Rodimus
 //
 //  Boards never instantiate a CPU, sound chip, ROM store or board RAM. They live ONCE in the dispatcher
-//  rtl/blueprint_board.sv: Z80s z80_0 (main) / z80_1 (sound), AY-3-8910s ay_0 / ay_1 (chip_pool_pkg buses), the shared
+//  rtl/blueprint_dispatcher.sv: Z80s z80_0 (main) / z80_1 (sound), AY-3-8910s ay_0 / ay_1 (chip_pool_pkg buses), the shared
 //  ROM blocks (eprom_4k: main 1-6, tile 0-1, sprite R/B/G on index 0; sound 1-2 on index 1) and the 6 board RAM pool
 //  blocks (ram_pool_pkg: 0 = work 2K (port B = hiscore), 1 = video 1K, 2 = color 1K, 3 = scroll 256, 4 = sprite 256,
 //  5 = sound 1K).

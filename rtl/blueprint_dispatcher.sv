@@ -23,7 +23,7 @@
 //
 //============================================================================
 
-module blueprint_board
+module blueprint_dispatcher
 (
 	input                reset,
 	input                clk_40m,

@@ -372,8 +372,8 @@ arcade_video #(256, 24) arcade_video
 wire [7:0] p1_controls = {m_down1, m_up1, m_right1, m_left1, m_fire1, m_fire1b, m_start1, m_coin1};
 wire [7:0] p2_controls = {m_down2, m_up2, m_right2, m_left2, m_fire2, m_fire2b, m_start2, m_coin2};
 
-// Blue Print dispatcher (rtl/blueprint_board.sv)
-blueprint_board BP_inst
+// Blue Print dispatcher (rtl/blueprint_dispatcher.sv)
+blueprint_dispatcher BP_inst
 (
 	.reset(~reset),
 

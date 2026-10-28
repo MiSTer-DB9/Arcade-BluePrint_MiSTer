@@ -42,7 +42,7 @@ module BluePrint_SND
 	input                vblank,
 
 
-	// shared Z80 (pool slot z80_1) and AY-3-8910s (pool slots ay_0 / ay_1), rtl/blueprint_board.sv
+	// shared Z80 (pool slot z80_1) and AY-3-8910s (pool slots ay_0 / ay_1), rtl/blueprint_dispatcher.sv
 	output chip_pool_pkg::z80_i_t  z80_1_i,
 	input  chip_pool_pkg::z80_o_t  z80_1_o,
 	output chip_pool_pkg::ay_i_t   ay_0_i,

@@ -50,11 +50,11 @@ module BluePrint_CPU
 	input   [3:0] h_center, v_center,
 
 
-	// shared Z80 (pool slot z80_0, rtl/blueprint_board.sv)
+	// shared Z80 (pool slot z80_0, rtl/blueprint_dispatcher.sv)
 	output chip_pool_pkg::z80_i_t z80_0_i,
 	input  chip_pool_pkg::z80_o_t z80_0_o,
 
-	// shared ROM blocks (read ports, rtl/blueprint_board.sv)
+	// shared ROM blocks (read ports, rtl/blueprint_dispatcher.sv)
 	output [11:0] rom_cpu_a,
 	input   [7:0] rom1_D, rom2_D, rom3_D, rom4_D, rom5_D, rom6_D,
 	output [11:0] rom_tile_a,
