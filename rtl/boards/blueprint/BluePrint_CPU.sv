@@ -28,20 +28,18 @@ module BluePrint_CPU
 	input         reset,
 	input         clk_40m,
 
-	// Video outputs
 	output  [4:0] red, green, blue,
 	output        video_hsync, video_vsync, video_csync,
 	output        video_hblank, video_vblank,
 	output        ce_pix,
 
-	// Player controls (active HIGH, directly from MiSTer)
+	// player controls, active high
 	input   [7:0] p1_controls,    // {coin, start2, start1, btn1, left, down, right, up}
 	input   [7:0] p2_controls,    // {3'b111, btn1, left, down, right, up}
 
-	// DIP switch readback from sound board
 	input   [7:0] dipsw_readback, // from sound board AY1 port A
 
-	// Sound interface (directly to sound board)
+	// sound command to the sound board
 	output  [7:0] sound_cmd,
 	output        sound_cmd_wr,
 
@@ -51,13 +49,22 @@ module BluePrint_CPU
 	// Screen centering
 	input   [3:0] h_center, v_center,
 
-	// ROM loading
-	input         main1_cs_i, main2_cs_i, main3_cs_i, main4_cs_i, main5_cs_i, main6_cs_i,
-	input         tile0_cs_i, tile1_cs_i,
-	input         spr_r_cs_i, spr_b_cs_i, spr_g_cs_i,
-	input  [24:0] ioctl_addr,
-	input   [7:0] ioctl_data,
-	input         ioctl_wr,
+
+	// shared Z80 (pool slot z80_0, rtl/blueprint_board.sv)
+	output chip_pool_pkg::z80_i_t z80_0_i,
+	input  chip_pool_pkg::z80_o_t z80_0_o,
+
+	// shared ROM blocks (read ports, rtl/blueprint_board.sv)
+	output [11:0] rom_cpu_a,
+	input   [7:0] rom1_D, rom2_D, rom3_D, rom4_D, rom5_D, rom6_D,
+	output [11:0] rom_tile_a,
+	input   [7:0] tile0_D, tile1_D,
+	output [11:0] rom_spr_a,
+	input   [7:0] spr_r_D, spr_b_D, spr_g_D,
+
+	// board RAM pool blocks 0-4: work (port B = hiscore), video, color, scroll, sprite
+	output ram_pool_pkg::pram_i_t [4:0] pr_i,
+	input  ram_pool_pkg::pram_o_t [4:0] pr_o,
 
 	input         pause,
 
@@ -70,14 +77,12 @@ module BluePrint_CPU
 
 //------------------------------------------------------- Clock enables -------------------------------------------------------//
 
-// Generate 5 MHz pixel clock enable from 40 MHz: integer divide by 8
-// 40 MHz / 8 = 5.000 MHz exactly (matches original 10 MHz XTAL / 2)
+// 5 MHz pixel = 40 / 8 (10 MHz XTAL / 2)
 reg [2:0] pix_div = 3'd0;
 always @(posedge clk_40m) pix_div <= pix_div + 3'd1;
 wire cen_5m = (pix_div == 3'd0);
 
-// Generate 3.5 MHz CPU clock enable from 40 MHz
-// 40 * 7/80 = 3.500 MHz exactly (matches 7 MHz XTAL / 2)
+// 3.5 MHz CPU = 40 * 7 / 80 (7 MHz XTAL / 2)
 wire [1:0] cpu_cen_o;
 jtframe_frac_cen #(2) cpu_cen
 (
@@ -93,8 +98,7 @@ assign ce_pix = cen_5m;
 
 //-------------------------------------------------------- Video timing --------------------------------------------------------//
 
-// H counter 0-319, V counter 0-263
-// From MAME: set_raw(5MHz, 320, 0, 256, 264, 16, 240)
+// 5 MHz dot clock: H 0-319, V 0-263, visible 256 x 224 (lines 16-239)
 reg [8:0] base_h_cnt = 9'd0;
 reg [8:0] v_cnt = 9'd0;
 always_ff @(posedge clk_40m) begin
@@ -116,7 +120,7 @@ assign video_hblank = hblk;
 assign video_vblank = vblk;
 
 // Sync generation with screen centering offsets
-wire [8:0] hs_start = 9'd280 + {5'd0, h_center};  // Was 9'd280 + {5'd0, h_center};
+wire [8:0] hs_start = 9'd280 + {5'd0, h_center};
 wire [8:0] hs_end   = hs_start + 9'd32;
 wire [8:0] vs_start = 9'd248 + {5'd0, v_center};
 wire [8:0] vs_end   = vs_start + 9'd4;
@@ -126,32 +130,22 @@ assign video_csync = ~(video_hsync ^ video_vsync);
 
 //------------------------------------------------------------ CPU -------------------------------------------------------------//
 
-// Main CPU - Zilog Z80 (T80s soft core)
+// Z80 bus (pool slot z80_0)
 wire [15:0] z80_A;
 wire [7:0] z80_Dout;
 wire n_mreq, n_iorq, n_rd, n_wr, n_rfsh, n_m1;
-T80s cpu
-(
-	.RESET_n(reset),
-	.CLK(clk_40m),
-	.CEN(cen_3m5 & ~pause),
-	.INT_n(n_irq),
-	.NMI_n(1'b1),
-	.WAIT_n(1'b1),
-	.MREQ_n(n_mreq),
-	.IORQ_n(n_iorq),
-	.RD_n(n_rd),
-	.WR_n(n_wr),
-	.RFSH_n(n_rfsh),
-	.M1_n(n_m1),
-	.A(z80_A),
-	.DI(z80_Din),
-	.DO(z80_Dout)
-);
+assign z80_A    = z80_0_o.a;
+assign z80_Dout = z80_0_o.dout;
+assign n_m1     = z80_0_o.m1_n;
+assign n_mreq   = z80_0_o.mreq_n;
+assign n_iorq   = z80_0_o.iorq_n;
+assign n_rd     = z80_0_o.rd_n;
+assign n_wr     = z80_0_o.wr_n;
+assign n_rfsh   = z80_0_o.rfsh_n;
 
 //--------------------------------------------------------- Interrupts ---------------------------------------------------------//
 
-// VBlank IRQ (irq0_line_hold style): assert on VBlank rising edge, clear on IORQ+M1
+// VBlank IRQ: set on the VBlank rising edge, held until the IORQ + M1 acknowledge
 reg n_irq = 1'b1;
 reg vblk_last = 1'b0;
 wire irq_ack = ~n_iorq & ~n_m1;
@@ -184,13 +178,7 @@ wire cs_cram   = mem_valid & (z80_A[15:12] == 4'hF);                // 0xF000-0x
 //------------------------------------------------------------ ROMs ------------------------------------------------------------//
 
 // Main program ROMs (5x 4KB)
-wire [7:0] rom1_D, rom2_D, rom3_D, rom4_D, rom5_D, rom6_D;
-eprom_4k main_rom1(.CLK(clk_40m), .ADDR(z80_A[11:0]), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(main1_cs_i), .WR(ioctl_wr), .DATA(rom1_D));
-eprom_4k main_rom2(.CLK(clk_40m), .ADDR(z80_A[11:0]), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(main2_cs_i), .WR(ioctl_wr), .DATA(rom2_D));
-eprom_4k main_rom3(.CLK(clk_40m), .ADDR(z80_A[11:0]), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(main3_cs_i), .WR(ioctl_wr), .DATA(rom3_D));
-eprom_4k main_rom4(.CLK(clk_40m), .ADDR(z80_A[11:0]), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(main4_cs_i), .WR(ioctl_wr), .DATA(rom4_D));
-eprom_4k main_rom5(.CLK(clk_40m), .ADDR(z80_A[11:0]), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(main5_cs_i), .WR(ioctl_wr), .DATA(rom5_D));
-eprom_4k main_rom6(.CLK(clk_40m), .ADDR(z80_A[11:0]), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(main6_cs_i), .WR(ioctl_wr), .DATA(rom6_D));
+assign rom_cpu_a = z80_A[11:0];
 
 // ROM data mux based on address
 wire [7:0] rom_D = (z80_A[14:12] == 3'd0) ? rom1_D :
@@ -202,79 +190,79 @@ wire [7:0] rom_D = (z80_A[14:12] == 3'd0) ? rom1_D :
                    8'hFF;
 
 // Tile ROMs (2x 4KB) — addressed by rendering pipeline
-wire [7:0] tile0_D, tile1_D;
 reg  [11:0] tile_render_addr;
-eprom_4k tile_rom0(.CLK(clk_40m), .ADDR(tile_render_addr), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(tile0_cs_i), .WR(ioctl_wr), .DATA(tile0_D));
-eprom_4k tile_rom1(.CLK(clk_40m), .ADDR(tile_render_addr), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(tile1_cs_i), .WR(ioctl_wr), .DATA(tile1_D));
+assign rom_tile_a = tile_render_addr;
 
 // Sprite ROMs (3x 4KB) — addressed by sprite scanner
-wire [7:0] spr_r_D, spr_b_D, spr_g_D;
 reg  [11:0] spr_render_addr;
-eprom_4k spr_rom_r(.CLK(clk_40m), .ADDR(spr_render_addr), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_r_cs_i), .WR(ioctl_wr), .DATA(spr_r_D));
-eprom_4k spr_rom_b(.CLK(clk_40m), .ADDR(spr_render_addr), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_b_cs_i), .WR(ioctl_wr), .DATA(spr_b_D));
-eprom_4k spr_rom_g(.CLK(clk_40m), .ADDR(spr_render_addr), .CLK_DL(clk_40m), .ADDR_DL(ioctl_addr), .DATA_IN(ioctl_data), .CS_DL(spr_g_cs_i), .WR(ioctl_wr), .DATA(spr_g_D));
+assign rom_spr_a = spr_render_addr;
 
 //-------------------------------------------------------------- RAM -----------------------------------------------------------//
 
+// board RAMs = pool blocks 0-4 in the dispatcher (same widths, same two ports)
+ram_pool_pkg::pram_i_t wram_i, vram_i, cram_i, scroll_i, sprite_i;
+ram_pool_pkg::pram_o_t wram_o, vram_o, cram_o, scroll_o, sprite_o;
+assign pr_i = {sprite_i, scroll_i, cram_i, vram_i, wram_i};
+assign {sprite_o, scroll_o, cram_o, vram_o, wram_o} = pr_o;
+
 // Work RAM (2KB, dual-port for hiscore)
 wire [7:0] wram_D;
-dpram_dc #(.widthad_a(11)) work_ram
-(
-	.clock_a(clk_40m),
-	.wren_a(cs_wram & ~n_wr),
-	.address_a(z80_A[10:0]),
-	.data_a(z80_Dout),
-	.q_a(wram_D),
-	.clock_b(clk_40m),
-	.wren_b(hs_write),
-	.address_b(hs_address[10:0]),
-	.data_b(hs_data_in),
-	.q_b(hs_data_out)
-);
+assign wram_i.a_addr = 15'(z80_A[10:0]);
+assign wram_i.a_d    = z80_Dout;
+assign wram_i.a_we   = cs_wram & ~n_wr;
+assign wram_i.b_addr = 15'(hs_address[10:0]);
+assign wram_i.b_d    = hs_data_in;
+assign wram_i.b_we   = hs_write;
+assign wram_D = wram_o.a_q;
+assign hs_data_out = wram_o.b_q;
 
 // Video RAM (1KB) — port A: CPU, port B: video rendering
 wire [7:0] vram_cpu_D, vram_render_D;
 reg  [9:0] vram_render_addr;
-dpram_dc #(.widthad_a(10)) video_ram
-(
-	.clock_a(clk_40m), .wren_a(cs_vram & ~n_wr),
-	.address_a(z80_A[9:0]), .data_a(z80_Dout), .q_a(vram_cpu_D),
-	.clock_b(clk_40m), .wren_b(1'b0),
-	.address_b(vram_render_addr), .data_b(8'd0), .q_b(vram_render_D)
-);
+assign vram_i.a_addr = 15'(z80_A[9:0]);
+assign vram_i.a_d    = z80_Dout;
+assign vram_i.a_we   = cs_vram & ~n_wr;
+assign vram_i.b_addr = 15'(vram_render_addr);
+assign vram_i.b_d    = 8'd0;
+assign vram_i.b_we   = 1'b0;
+assign vram_cpu_D = vram_o.a_q;
+assign vram_render_D = vram_o.b_q;
 
 // Color RAM (1KB) — port A: CPU, port B: video rendering
 wire [7:0] cram_cpu_D, cram_render_D;
 reg  [9:0] cram_render_addr;
-dpram_dc #(.widthad_a(10)) color_ram
-(
-	.clock_a(clk_40m), .wren_a(cs_cram & ~n_wr),
-	.address_a(z80_A[9:0]), .data_a(z80_Dout), .q_a(cram_cpu_D),
-	.clock_b(clk_40m), .wren_b(1'b0),
-	.address_b(cram_render_addr), .data_b(8'd0), .q_b(cram_render_D)
-);
+assign cram_i.a_addr = 15'(z80_A[9:0]);
+assign cram_i.a_d    = z80_Dout;
+assign cram_i.a_we   = cs_cram & ~n_wr;
+assign cram_i.b_addr = 15'(cram_render_addr);
+assign cram_i.b_d    = 8'd0;
+assign cram_i.b_we   = 1'b0;
+assign cram_cpu_D = cram_o.a_q;
+assign cram_render_D = cram_o.b_q;
 
 // Scroll RAM (256 bytes) — port A: CPU, port B: video rendering
 wire [7:0] scroll_cpu_D, scroll_render_D;
 reg  [7:0] scroll_render_addr;
-dpram_dc #(.widthad_a(8)) scroll_ram
-(
-	.clock_a(clk_40m), .wren_a(cs_scroll & ~n_wr),
-	.address_a(z80_A[7:0]), .data_a(z80_Dout), .q_a(scroll_cpu_D),
-	.clock_b(clk_40m), .wren_b(1'b0),
-	.address_b(scroll_render_addr), .data_b(8'd0), .q_b(scroll_render_D)
-);
+assign scroll_i.a_addr = 15'(z80_A[7:0]);
+assign scroll_i.a_d    = z80_Dout;
+assign scroll_i.a_we   = cs_scroll & ~n_wr;
+assign scroll_i.b_addr = 15'(scroll_render_addr);
+assign scroll_i.b_d    = 8'd0;
+assign scroll_i.b_we   = 1'b0;
+assign scroll_cpu_D = scroll_o.a_q;
+assign scroll_render_D = scroll_o.b_q;
 
 // Sprite RAM (256 bytes) — port A: CPU, port B: sprite scanner
 wire [7:0] sprite_cpu_D, sprite_scan_D;
 reg  [7:0] sprite_scan_addr;
-dpram_dc #(.widthad_a(8)) sprite_ram
-(
-	.clock_a(clk_40m), .wren_a(cs_sprite & ~n_wr),
-	.address_a(z80_A[7:0]), .data_a(z80_Dout), .q_a(sprite_cpu_D),
-	.clock_b(clk_40m), .wren_b(1'b0),
-	.address_b(sprite_scan_addr), .data_b(8'd0), .q_b(sprite_scan_D)
-);
+assign sprite_i.a_addr = 15'(z80_A[7:0]);
+assign sprite_i.a_d    = z80_Dout;
+assign sprite_i.a_we   = cs_sprite & ~n_wr;
+assign sprite_i.b_addr = 15'(sprite_scan_addr);
+assign sprite_i.b_d    = 8'd0;
+assign sprite_i.b_we   = 1'b0;
+assign sprite_cpu_D = sprite_o.a_q;
+assign sprite_scan_D = sprite_o.b_q;
 
 //-------------------------------------------------------- I/O registers -------------------------------------------------------//
 
@@ -291,9 +279,8 @@ always_ff @(posedge clk_40m) begin
 	end
 end
 
-// MASTER FLIP (J4-34 on real hardware): one global signal, XORed into the
-// scan counters and the per-object flip bits. The cocktail register and the
-// OSD toggle compose, so two flips cancel back to upright.
+// MASTER FLIP (J4-34): one global signal XORed into the scan counters and the per-object flip bits;
+// the cocktail register and the OSD toggle compose, so two flips cancel.
 wire master_flip = flip ^ crt_flip;
 
 // Sound command (0xD000 write)
@@ -322,9 +309,15 @@ wire [7:0] z80_Din = cs_rom                                ? rom_D :
                      (cs_io_c & ~n_rd & (z80_A[1:0] == 2'b11)) ? dipsw_readback :
                      8'hFF;
 
+// pool slot z80_0 inputs
+assign z80_0_i.ce    = cen_3m5 & ~pause;
+assign z80_0_i.int_n = n_irq;
+assign z80_0_i.nmi_n = 1'b1;
+assign z80_0_i.di    = z80_Din;
+
 //--- Tilemap rendering pipeline ---
 //
-// TILEMAP_SCAN_COLS_FLIP_X layout: tile_index = (31 - col) * 32 + row
+// tile layout: column-major, X-flipped: tile_index = (31 - col) * 32 + row
 // VRAM/CRAM address: {(31 - screen_col), tile_row}  (column-major, X-flipped)
 //
 // Timeline (all on cen_5m):
@@ -355,17 +348,11 @@ wire [4:0] screen_col  = h_cnt[7:3];
 wire [2:0] fine_x      = h_cnt[2:0];
 wire [7:0] screen_y    = v_cnt[7:0];
 
-// MASTER FLIP inverts the counters that generate addresses. fine_x stays raw:
-// it is the fetch schedule, not an address. Both visible spans are symmetric
-// about 127.5 (cols 0-31, lines 16-239), so a bare inversion maps each range
-// onto itself with no offset. Reversing the fetch order is also what makes the
-// previous-column bank bit read the other neighbour, exactly as the board does.
-// Flip mirror-centre corrections. Each layer carries its own fixed offset
-// between the raster counter and the pixels it puts on screen, and mirroring
-// doubles that offset into a visible error. Both measured on hardware.
-// The two knobs act in OPPOSITE directions: FLIP_COL_ADJ subtracts from a fetch
-// address, FLIP_SPR_ADJ from a write position. Raising FLIP_COL_ADJ moves tiles
-// one way on screen, raising FLIP_SPR_ADJ moves sprites the other.
+// MASTER FLIP inverts the address counters (fine_x stays raw: it is the fetch schedule). Both visible
+// spans are symmetric about 127.5, so a bare inversion maps each onto itself; the reversed fetch order
+// also makes the previous-column bank bit read the other neighbour, as the board does.
+// flip mirror-centre corrections, measured on hardware. They act in OPPOSITE directions: FLIP_COL_ADJ
+// subtracts from a fetch address (raising it moves tiles one way), FLIP_SPR_ADJ from a write position.
 localparam [4:0] FLIP_COL_ADJ = 5'd3;    // tilemap, in tile columns (24px)
 localparam [7:0] FLIP_SPR_ADJ = 8'd12;   // sprites, in pixels
 wire [4:0] eff_col = master_flip ? ((~screen_col) - FLIP_COL_ADJ) : screen_col;
@@ -412,9 +399,9 @@ always_ff @(posedge clk_40m) begin
 						reg [7:0] scrolled_y;
 						scrolled_y       = eff_y + scroll_render_D;
 						pipe_fine_y      <= scrolled_y[2:0];
-						// TILEMAP_SCAN_COLS_FLIP_X: VRAM col 0 = rightmost screen col (31)
-						vram_render_addr <= {(5'd30 - latched_col), scrolled_y[7:3]};  // Test Change From 5'd31
-						cram_render_addr <= {(5'd30 - latched_col), scrolled_y[7:3]};  // Test Change From 5'd31
+						// VRAM col 0 = rightmost screen column
+						vram_render_addr <= {(5'd30 - latched_col), scrolled_y[7:3]};
+						cram_render_addr <= {(5'd30 - latched_col), scrolled_y[7:3]};
 					end
 					tile_shift0 <= {tile_shift0[6:0], 1'b0};
 					tile_shift1 <= {tile_shift1[6:0], 1'b0};
@@ -616,7 +603,7 @@ always_ff @(posedge clk_40m) begin
 					pixel_val = {spr_rom_g_lat[bit_pos], spr_rom_b_lat[bit_pos], spr_rom_r_lat[bit_pos]};
 					// MASTER FLIP: sx = 248 - sx
 					x_base    = master_flip ? (8'd248 - spr_byte3 - FLIP_SPR_ADJ) : spr_byte3;
-					x_pos     = x_base + {5'd0, spr_pix_cnt} + 8'd0;  // + 8'd2
+					x_pos     = x_base + {5'd0, spr_pix_cnt} + 8'd0;
 					if (pixel_val != 3'd0) begin
 						if (~linebuf_sel)
 							linebuf1[x_pos] <= pixel_val;
@@ -647,7 +634,6 @@ end
 
 //--- Sprite pixel readout ---
 
-//wire [2:0] sprite_pixel     = linebuf_sel ? linebuf1[h_cnt[7:0]] : linebuf0[h_cnt[7:0]];
 wire [2:0] sprite_pixel       = linebuf_sel ? linebuf1[h_cnt[7:0] - 8'd3] : linebuf0[h_cnt[7:0] - 8'd3];
 
 // Clear display buffer as we read (becomes write buffer next line)
