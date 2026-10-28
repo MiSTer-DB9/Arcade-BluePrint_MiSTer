@@ -1,17 +1,31 @@
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/chip_pool_pkg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ram_pool_pkg.sv
 set_global_assignment -name SYSTEMVERILOG_FILE Arcade-BluePrint.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/BluePrint.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/BluePrint_CPU.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/blueprint_dispatcher.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/boards/blueprint/BluePrint_CPU.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/art/artwork.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/art/art_resample.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/art/png_decode.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/art/inflate.sv
 set_global_assignment -name VERILOG_FILE rtl/mister_custom/pause.v
 set_global_assignment -name VERILOG_FILE rtl/mister_custom/hiscore.v
-# CTL-2026-10-25: shared input library (controllers.sv v2)
+# shared input library (controllers.sv)
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mister_custom/controllers.sv
 set_global_assignment -name VERILOG_FILE rtl/pll/jtframe_frac_cen.v
 
-set_global_assignment -name QIP_FILE rtl/cpu/bp_cpu.qip
+set_global_assignment -name VHDL_FILE rtl/cpu/T80/T80s.vhd
+set_global_assignment -name VHDL_FILE rtl/cpu/T80/T80.vhd
+set_global_assignment -name VHDL_FILE rtl/cpu/T80/T80_ALU.vhd
+set_global_assignment -name VHDL_FILE rtl/cpu/T80/T80_MCode.vhd
+set_global_assignment -name VHDL_FILE rtl/cpu/T80/T80_Pack.vhd
+set_global_assignment -name VHDL_FILE rtl/cpu/T80/T80_Reg.vhd
 
-set_global_assignment -name QIP_FILE rtl/sound/bp_sound.qip
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/BluePrint_SND.sv
+set_global_assignment -name QIP_FILE rtl/sound/jt49/hdl/jt49.qip
+set_global_assignment -name VERILOG_FILE rtl/sound/jt49/hdl/filter/jt49_dcrm2.v
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/boards/blueprint/BluePrint_SND.sv
 
-set_global_assignment -name QIP_FILE rtl/ram_rom/bp_ram_rom.qip
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ram_rom/rom_loader.sv
+set_global_assignment -name VHDL_FILE rtl/ram_rom/spram.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ram_rom/dpram_dc.sv
